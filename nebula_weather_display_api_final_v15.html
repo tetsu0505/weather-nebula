@@ -1,0 +1,222 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>天気予報と時計</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: "Arial", sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #location {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+    #date {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    #clock {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+    #summary {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-bottom: 20px;
+    }
+    .summary-block {
+      width: 180px;
+      height: 220px;
+      flex-shrink: 0;
+      text-align: center;
+    }
+    .summary-block img {
+      width: 160px !important;
+      height: 160px !important;
+      max-width: none;
+      display: block;
+      margin: 0 auto;
+      max-width: none;
+      display: block;
+      margin: 0 auto;
+      width: 50px;
+      height: 50px;
+    }
+    #forecast {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+    }
+    .hour-block {
+      background-color: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 10px;
+      min-width: 130px;
+      flex: 0 0 auto;
+    }
+    .hour-block img {
+      width: 40px;
+      height: 40px;
+    }
+    .label {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="location">東京都品川区</div>
+  <div id="date"></div>
+  <div id="clock">--:--:--</div>
+
+  <div id="summary">
+    <div class="summary-block">
+      <div class="label">今日</div>
+      <img id="today-icon" src="" alt="今日の天気">
+      <div id="today-desc"></div>
+      <div id="today-temp"></div>
+    </div>
+    <div class="summary-block">
+      <div class="label">明日</div>
+      <img id="tomorrow-icon" src="" alt="明日の天気">
+      <div id="tomorrow-desc"></div>
+      <div id="tomorrow-temp"></div>
+    </div>
+  </div>
+
+  <canvas id="tempChart" style="width: 100%; max-width: 1000px; height: 140px; margin: 0 auto 20px auto;"></canvas>
+
+  <div id="forecast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const API_KEY = 'dfdc702dc141789b6ca8486e6624008a';
+    const LAT = 35.609226;
+    const LON = 139.730186;
+
+    function updateClock() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth() + 1;
+      const d = now.getDate();
+      const w = ['日', '月', '火', '水', '木', '金', '土'][now.getDay()];
+      document.getElementById("date").textContent = `${y}年${m}月${d}日 (${w}曜日)`;
+      const h = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById("clock").textContent = `${h}:${min}:${s}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    let chart;
+    function drawChart(labels, temps) {
+      const ctx = document.getElementById('tempChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            
+            data: temps,
+            borderColor: 'orange',
+            backgroundColor: function(context) {
+              const chart = context.chart;
+              const {ctx, chartArea} = chart;
+              if (!chartArea) return null;
+              const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, 'rgba(255,165,0,0.4)');
+              gradient.addColorStop(1, 'rgba(255,165,0,0.1)');
+              return gradient;
+            },
+            borderWidth: 2,
+            tension: 0.4,
+            pointBackgroundColor: '#fff',
+            pointBorderColor: 'orange',
+            pointRadius: 5,
+            fill: true
+          }]
+        },
+        options: {
+          scales: {
+            x: {
+              ticks: { color: '#fff' },
+              grid: { display: false }
+            },
+            y: {
+              ticks: { color: '#fff', stepSize: 3 },
+              grid: { display: false }
+            }
+          },
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+    }
+
+    fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${LAT}&lon=${LON}&units=metric&lang=ja&appid=${API_KEY}`)
+      .then(res => res.json())
+      .then(data => {
+        const forecastContainer = document.getElementById("forecast");
+        forecastContainer.innerHTML = "";
+        const labels = [];
+        const temps = [];
+        for (let i = 0; i < 6; i++) {
+          const item = data.list[i];
+          const dt = new Date(item.dt * 1000);
+          const hour = dt.getHours();
+          const icon = item.weather[0].icon;
+          const desc = item.weather[0].description;
+          const temp = Math.round(item.main.temp);
+          const rain = item.pop ? Math.round(item.pop * 100) : 0;
+          const wind = item.wind.speed;
+
+          labels.push(`${hour}時`);
+          temps.push(temp);
+
+          const block = document.createElement("div");
+          block.className = "hour-block";
+          block.innerHTML = `
+            <div class="label">${hour}時</div>
+            <img src="https://openweathermap.org/img/wn/${icon}@2x.png" alt="${desc}">
+            <div>${desc}</div>
+            <div>気温：${temp}℃</div>
+            <div>降水：${rain}%</div>
+            
+          `;
+          forecastContainer.appendChild(block);
+        }
+        drawChart(labels, temps);
+
+        const today = data.list[0];
+        const tomorrow = data.list.find(f => {
+          const date = new Date(f.dt * 1000);
+          return date.getDate() !== new Date().getDate();
+        });
+
+        if (today) {
+          document.getElementById("today-icon").src = `https://openweathermap.org/img/wn/${today.weather[0].icon}@2x.png`;
+          document.getElementById("today-desc").textContent = today.weather[0].description;
+          document.getElementById("today-temp").textContent = `${Math.round(today.main.temp_max)}℃ / ${Math.round(today.main.temp_min)}℃`;
+        }
+        if (tomorrow) {
+          document.getElementById("tomorrow-icon").src = `https://openweathermap.org/img/wn/${tomorrow.weather[0].icon}@2x.png`;
+          document.getElementById("tomorrow-desc").textContent = tomorrow.weather[0].description;
+          document.getElementById("tomorrow-temp").textContent = `${Math.round(tomorrow.main.temp_max)}℃ / ${Math.round(tomorrow.main.temp_min)}℃`;
+        }
+      });
+  </script>
+</body>
+</html>
